@@ -25,21 +25,27 @@
 
 #include "types.h"
 
-struct SDL_Surface;
+struct SDL_Window;
+struct SDL_Renderer;
+struct SDL_Texture;
 
 class GraphicsManager {
 public:
-	GraphicsManager();
+	GraphicsManager() = default;
 	~GraphicsManager();
-
-	bool init(uint width, uint height, bool highColor);
+	bool init(SDL_Window *window, uint width, uint height, bool highColor);
 	void blit(const byte *ptr, uint x, uint y, uint width, uint height, uint pitch);
 	void update();
 	void setPalette(const byte *ptr, uint start, uint count);
 
 private:
-	SDL_Surface *_mainScreen;
-	SDL_Surface *_workingScreen;
+	void convertIndexToRGBA(uint32_t *rgbaData, const byte *paletteData, int width, int height) const;
+	SDL_Renderer *_renderer = nullptr;
+	SDL_Texture *_texture   = nullptr;
+	SDL_Palette *_palette   = nullptr;
+	int _width  = 0;
+	int _height = 0;
+	bool _isHighColor = false;
 };
 
 #endif

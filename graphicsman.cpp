@@ -22,79 +22,104 @@
 
 #include <SDL.h>
 #include <stdio.h>
+#include <cstring>
 
 #include "graphicsman.h"
 
 // TODO: aspect ratio correction option
 // TODO: resize/scaling option
 
-GraphicsManager::GraphicsManager() {
-	_mainScreen = 0;
-	_workingScreen = 0;
-}
-
 GraphicsManager::~GraphicsManager() {
-	if (_workingScreen)
-		SDL_FreeSurface(_workingScreen);
+	if ( _palette )
+		SDL_FreePalette(_palette);
+	if ( _texture )
+		SDL_DestroyTexture(_texture);
+	if ( _renderer )
+		SDL_DestroyRenderer(_renderer);
 }
 
-bool GraphicsManager::init(uint width, uint height, bool isHighColor) {
-	// Try 32bpp first
-	_mainScreen = SDL_SetVideoMode(width, height, 32, SDL_SWSURFACE);
+bool GraphicsManager::init(SDL_Window *window, uint width, uint height, bool isHighColor) {
+	_width = width;
+	_height = height;
+	_isHighColor = isHighColor;
 
-	// Fall back on 16bpp
-	if (!_mainScreen)
-		_mainScreen = SDL_SetVideoMode(width, height, 16, SDL_SWSURFACE);
-
-	if (!_mainScreen)
+	// Create renderer
+	_renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
+	if ( !_renderer )
 		return false;
 
-	if (isHighColor)
-		_workingScreen = SDL_CreateRGBSurface(SDL_SWSURFACE, width, height, 16, 0xF800, 0x7E0, 0x1F, 0);
-	else
-		_workingScreen = SDL_CreateRGBSurface(SDL_SWSURFACE, width, height, 8, 0, 0, 0, 0);
+	SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "best");
+	SDL_RenderSetScale(_renderer, width, height);
+
+	// Create texture
+	_texture = SDL_CreateTexture(_renderer, SDL_PIXELFORMAT_RGBA8888, SDL_TEXTUREACCESS_STREAMING, _width, _height);
+	if ( !_texture ) {
+		return false;
+	}
 
 	return true;
 }
 
 void GraphicsManager::setPalette(const byte *ptr, uint start, uint count) {
-	if (_workingScreen->format->BitsPerPixel != 8 || count == 0 || !ptr || start + count > 256)
+	if ( count == 0 || !ptr || start + count > 256 )
 		return;
 
-	SDL_Color *colors = new SDL_Color[count];
-
-	for (uint i = 0; i < count; i++) {
+	SDL_Color colors[256] = { 0 };
+	for ( uint i = 0; i < count; i++ ) {
 		colors[i].r = ptr[i * 3];
 		colors[i].g = ptr[i * 3 + 1];
 		colors[i].b = ptr[i * 3 + 2];
+		colors[i].a = 255;
 	}
 
-	SDL_SetColors(_workingScreen, colors, start, count);
-	delete[] colors;
+	if ( _palette )
+		SDL_FreePalette(_palette);
+
+	_palette = SDL_AllocPalette(count);
+	SDL_SetPaletteColors(_palette, colors, start, count);
+}
+
+void GraphicsManager::convertIndexToRGBA(uint32_t *rgbaData, const byte *paletteData, int width, int height) const {
+	for ( int y = 0; y < height; ++y ) {
+		for ( int x = 0; x < width; ++x ) {
+			uint8_t index = paletteData[y * width + x];
+			SDL_Color color = _palette->colors[index];
+			rgbaData[y * width + x] = (color.r << 24) | (color.g << 16) | (color.b << 8) | (color.a);
+		}
+	}
 }
 
 void GraphicsManager::blit(const byte *ptr, uint x, uint y, uint width, uint height, uint pitch) {
-	if (width == 0 || height == 0)
+	if ( width == 0 || height == 0 )
 		return;
 
-	if (x + width > (uint)_workingScreen->w)
-		width = _workingScreen->w - x;
+	// Clip dimensions
+	if ( x + width > (uint)_width )
+		width = _width - x;
+	if ( y + height > (uint)_height )
+		height = _height - y;
 
-	if (y + height > (uint)_workingScreen->h)
-		height = _workingScreen->h - y;
 
-	SDL_LockSurface(_workingScreen);
+	void *texPixels;
+	int texPitch;
+	SDL_LockTexture(_texture, NULL, &texPixels, &texPitch);
 
-	for (uint i = 0; i < height; i++)
-		memcpy((byte *)_workingScreen->pixels + (i + y) * _workingScreen->pitch + x, ptr + i * pitch, width * _workingScreen->format->BytesPerPixel);
+	if ( _isHighColor )
+		SDL_ConvertPixels(width, height, SDL_PIXELFORMAT_RGB565, ptr + y * pitch + x, pitch, SDL_PIXELFORMAT_RGBA8888, texPixels, texPitch);
+	else {
+		convertIndexToRGBA((uint32_t *)texPixels, ptr + y * pitch + x, width, height);
+	}
 
-	SDL_UnlockSurface(_workingScreen);
+	SDL_UnlockTexture(_texture);
 }
 
 void GraphicsManager::update() {
-	// Blit the 8bpp surface to the main screen
-	SDL_BlitSurface(_workingScreen, 0, _mainScreen, 0);
+	// Clear renderer
+	SDL_RenderClear(_renderer);
 
-	// Then update the whole screen
-	SDL_UpdateRect(_mainScreen, 0, 0, _mainScreen->w, _mainScreen->h);
+	// Copy entire texture to renderer
+	SDL_RenderCopy(_renderer, _texture, NULL, NULL);
+
+	// Present renderer
+	SDL_RenderPresent(_renderer);
 }

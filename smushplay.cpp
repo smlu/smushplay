@@ -27,16 +27,6 @@
 #include "graphicsman.h"
 #include "smushvideo.h"
 
-#ifdef _WIN32
-#define WIN32_LEAN_AND_MEAN
-#include <windows.h>
-
-int __stdcall WinMain(HINSTANCE /*hInst*/, HINSTANCE /*hPrevInst*/,  LPSTR /*lpCmdLine*/, int /*iShowCmd*/) {
-	SDL_SetModuleHandle(GetModuleHandle(0));
-	return main(__argc, __argv);
-}
-#endif
-
 void printUsage(const char *appName) {
 	printf("Usage: %s <video>\n", appName);
 }
@@ -50,12 +40,12 @@ int main(int argc, char **argv) {
 	printf("Based on ScummVM and ResidualVM's SMUSH player\n");
 	printf("See COPYING for the license\n\n");
 
-	if (argc < 2) {
+	if ( argc < 2 ) {
 		printUsage(argv[0]);
 		return 0;
 	}
 
-	if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO) < 0) {
+	if ( SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO) < 0 ) {
 		fprintf(stderr, "Failed to initialize SDL\n");
 		return 1;
 	}
@@ -64,28 +54,33 @@ int main(int argc, char **argv) {
 
 	// Initialize audio here
 	AudioManager audio;
-	if (!audio.init()) {
+	if ( !audio.init() ) {
 		fprintf(stderr, "Failed to initialize SDL audio\n");
 		return 1;
 	}
 
 	SMUSHVideo video(audio);
-	if (!video.load(argv[1])) {
+	if ( !video.load(argv[1]) ) {
 		fprintf(stderr, "Failed to play file '%s'\n", argv[1]);
 		return 1;
 	}
 
-	GraphicsManager gfx;
-	if (!gfx.init(video.getWidth(), video.getHeight(), video.isHighColor())) {
+	SDL_Window *window = SDL_CreateWindow("smushplay", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, video.getWidth(), video.getHeight(), SDL_WINDOW_SHOWN);
+	if ( !window ) {
 		fprintf(stderr, "Failed to initialize SDL screen\n");
 		return 1;
 	}
 
-	// Add our fun title
-	SDL_WM_SetCaption("smushplay", "smushplay");
+	GraphicsManager gfx;
+	if ( !gfx.init(window, video.getWidth(), video.getHeight(), video.isHighColor()) ) {
+		fprintf(stderr, "Failed to initialize SDL screen\n");
+		SDL_DestroyWindow(window);
+		return 1;
+	}
 
 	// Finally, play the damned thing
 	video.play(gfx);
 
+	SDL_DestroyWindow(window);
 	return 0;
 }
