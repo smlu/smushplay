@@ -85,7 +85,8 @@ private:
 
 		bool endOfStream() const;
 		bool endOfData() const;
-		void mix(int16 *samples, uint length);
+		void mixInt16(int16 *samples, uint length);
+		void mix(SDL_AudioFormat format, void *samples, uint length);
 
 		void setVolume(byte volume);
 		byte getVolume() const { return _volume; }

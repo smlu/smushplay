@@ -28,6 +28,8 @@
 #include "rate.h"
 #include "util.h"
 
+#include <vector>
+
 AudioManager::AudioManager() {
 	_mutex = SDL_CreateMutex();
 	_channelSeed = 0;
@@ -41,17 +43,17 @@ AudioManager::~AudioManager() {
 
 bool AudioManager::init() {
 	SDL_AudioSpec spec;
-	spec.freq = 44100;
-	spec.format = AUDIO_S16SYS;
+	spec.freq     = 44100;
+	spec.format   = AUDIO_S16SYS;
 	spec.channels = 2;
-	spec.samples = 4096;
+	spec.samples  = 4096;
 	spec.callback = sdlCallback;
 	spec.userdata = this;
 
-	if (SDL_OpenAudio(&spec, &_spec) != 0)
+	if ( SDL_OpenAudio(&spec, &_spec) != 0 )
 		return false;
 
-	if (_spec.channels != 2 || _spec.format != AUDIO_S16SYS)
+	if ( _spec.channels != 2 )
 		return false;
 
 	SDL_PauseAudio(0);
@@ -64,7 +66,7 @@ void AudioManager::play(AudioStream *stream) {
 }
 
 void AudioManager::play(AudioStream *stream, AudioHandle &handle, byte volume, int8 balance) {
-	if (!stream)
+	if ( !stream )
 		return;
 
 	Channel *chan = new Channel(stream, _spec.freq, volume, balance);
@@ -72,7 +74,7 @@ void AudioManager::play(AudioStream *stream, AudioHandle &handle, byte volume, i
 	SDL_mutexP(_mutex);
 	handle._id = _channelSeed++;
 
-	if (handle._id == 0xFFFFFFFF) {
+	if ( handle._id == 0xFFFFFFFF ) {
 		// Probably could have better error handling, but I really hope
 		// this never happens :P
 		fprintf(stderr, "Rolling over AudioManager id's\n");
@@ -84,14 +86,14 @@ void AudioManager::play(AudioStream *stream, AudioHandle &handle, byte volume, i
 }
 
 void AudioManager::stop(const AudioHandle &handle) {
-	if (handle._id == 0xFFFFFFFF)
+	if ( handle._id == 0xFFFFFFFF )
 		return;
 
 	SDL_mutexP(_mutex);
 
 	ChannelMap::iterator it = _channels.find(handle._id);
 
-	if (it != _channels.end()) {
+	if ( it != _channels.end() ) {
 		delete it->second;
 		_channels.erase(it);
 	}
@@ -102,7 +104,7 @@ void AudioManager::stop(const AudioHandle &handle) {
 void AudioManager::stopAll() {
 	SDL_mutexP(_mutex);
 
-	for (ChannelMap::iterator it = _channels.begin(); it != _channels.end(); it++)
+	for ( ChannelMap::iterator it = _channels.begin(); it != _channels.end(); it++ )
 		delete it->second;
 
 	_channels.clear();
@@ -120,13 +122,14 @@ void AudioManager::callbackHandler(byte *samples, int len) {
 
 	SDL_mutexP(_mutex);
 
-	for (ChannelMap::iterator it = _channels.begin(); it != _channels.end(); it++) {
+	for ( ChannelMap::iterator it = _channels.begin(); it != _channels.end(); it++ ) {
 		Channel *channel = it->second;
 
-		if (channel->endOfStream()) {
+		if ( channel->endOfStream() ) {
 			// TODO: Remove the channel
-		} else if (!channel->endOfData()) {
-			channel->mix((int16 *)samples, len >> 2);
+		}
+		else if ( !channel->endOfData() ) {
+			channel->mix(_spec.format, samples, len);
 		}
 	}
 
@@ -134,21 +137,21 @@ void AudioManager::callbackHandler(byte *samples, int len) {
 }
 
 void AudioManager::setVolume(const AudioHandle &handle, byte volume) {
-	if (handle._id == 0xFFFFFFFF)
+	if ( handle._id == 0xFFFFFFFF )
 		return;
 
 	SDL_mutexP(_mutex);
 
 	ChannelMap::iterator it = _channels.find(handle._id);
 
-	if (it != _channels.end())
+	if ( it != _channels.end() )
 		it->second->setVolume(volume);
 
 	SDL_mutexV(_mutex);
 }
 
 byte AudioManager::getVolume(const AudioHandle &handle) {
-	if (handle._id == 0xFFFFFFFF)
+	if ( handle._id == 0xFFFFFFFF )
 		return 0;
 
 	byte volume = 0;
@@ -157,7 +160,7 @@ byte AudioManager::getVolume(const AudioHandle &handle) {
 
 	ChannelMap::iterator it = _channels.find(handle._id);
 
-	if (it != _channels.end())
+	if ( it != _channels.end() )
 		volume = it->second->getVolume();
 
 	SDL_mutexV(_mutex);
@@ -166,21 +169,21 @@ byte AudioManager::getVolume(const AudioHandle &handle) {
 }
 
 void AudioManager::setBalance(const AudioHandle &handle, int8 balance) {
-	if (handle._id == 0xFFFFFFFF)
+	if ( handle._id == 0xFFFFFFFF )
 		return;
 
 	SDL_mutexP(_mutex);
 
 	ChannelMap::iterator it = _channels.find(handle._id);
 
-	if (it != _channels.end())
+	if ( it != _channels.end() )
 		it->second->setBalance(balance);
 
 	SDL_mutexV(_mutex);
 }
 
 int8 AudioManager::getBalance(const AudioHandle &handle) {
-	if (handle._id == 0xFFFFFFFF)
+	if ( handle._id == 0xFFFFFFFF )
 		return 0;
 
 	int8 balance = 0;
@@ -189,7 +192,7 @@ int8 AudioManager::getBalance(const AudioHandle &handle) {
 
 	ChannelMap::iterator it = _channels.find(handle._id);
 
-	if (it != _channels.end())
+	if ( it != _channels.end() )
 		balance = it->second->getVolume();
 
 	SDL_mutexV(_mutex);
@@ -214,19 +217,55 @@ void AudioManager::Channel::updateChannelVolumes() {
 	// TODO: Global volume setting instead of kMaxAudioManVolume
 	int vol = kMaxAudioManVolume * _volume;
 
-	if (_balance == 0) {
+	if ( _balance == 0 ) {
 		_leftVolume = _rightVolume = vol / kMaxChannelVolume;
-	} else if (_balance < 0) {
+	}
+	else if ( _balance < 0 ) {
 		_leftVolume = vol / kMaxChannelVolume;
 		_rightVolume = ((127 + _balance) * vol) / (kMaxChannelVolume * 127);
-	} else {
+	}
+	else {
 		_leftVolume = ((127 - _balance) * vol) / (kMaxChannelVolume * 127);
 		_rightVolume = vol / kMaxChannelVolume;
 	}
 }
 
-void AudioManager::Channel::mix(int16 *samples, uint length) {
+void AudioManager::Channel::mixInt16(int16 *samples, uint length) {
 	_converter->flow(*_stream, samples, length, _leftVolume, _rightVolume);
+}
+
+void AudioManager::Channel::mix(SDL_AudioFormat format, void *samples, uint length) {
+	switch ( format ) {
+		case AUDIO_S16SYS: {
+			mixInt16((int16_t *)samples, length / sizeof(int16_t) / 2); // 2 channells
+		} break;
+		case AUDIO_F32SYS: {
+			// Create a temporary int16 buffer and convert
+			std::vector<int16_t> tempBuffer(length / sizeof(float));
+			mixInt16(tempBuffer.data(), length / sizeof(float) / 2); // 2 channels
+
+			// Convert int16 to float, normalized to [-1.0, 1.0]
+			float *floatSamples = static_cast<float *>(samples);
+			for ( int i = 0; i < (length / sizeof(float)); ++i ) {
+				floatSamples[i] = std::max(-1.0f, std::min(1.0f, tempBuffer[i] / 32768.0f));
+			}
+		} break;
+		case AUDIO_S32SYS: {
+			// Create a temporary int16 buffer and convert
+			std::vector<int16_t> tempBuffer(length / sizeof(float));
+			mixInt16(tempBuffer.data(), length / sizeof(float) / 2); // 2 channels
+
+			// Convert int16 to int32 by left-shifting
+			int32_t *int32Samples = static_cast<int32_t *>(samples);
+			for ( int i = 0; i < (length / sizeof(float)); ++i ) {
+				int32Samples[i] = tempBuffer[i] << 16;
+			}
+		} break;
+		default:
+			// Fallback or error handling
+			printf("Unsupported audio format: 0x%x\n", format);
+			break;
+	}
 }
 
 bool AudioManager::Channel::endOfStream() const {
